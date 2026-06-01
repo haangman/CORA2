@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:\\Users\\김은희\\Downloads\\CORA2\\.claude\\hooks\\run_tests.py\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:\\Users\\김은희\\Downloads\\CORA2\\.claude\\hooks\\auto_push.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
