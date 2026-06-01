@@ -1,10 +1,10 @@
 """CORA2 명령줄 인터페이스.
 
-사용 예:
-    python -m cora2 <경로>              # 카테고리/언어 요약 출력
-    python -m cora2 <경로> --json       # JSON 요약 출력
-    python -m cora2 <경로> --list       # 파일별 분류 결과 출력
-    python -m cora2 <경로> --group category  # 카테고리별 파일 묶음 출력
+서브커맨드:
+    cora2 classify <경로> [--json|--list|--group category|language]
+        경로/확장자 규칙 기반 단일 카테고리 분류(기존 기능).
+    cora2 tag <경로> [--config FILE] [--dimension a,b,..] [--json|--list]
+        파일 경로/내용/git history 기반 9개 차원 태깅.
 """
 
 from __future__ import annotations
@@ -16,30 +16,37 @@ from collections import defaultdict
 
 from cora2 import __version__
 from cora2.classifier import scan_directory, summarize
+from cora2.config import find_and_load
+from cora2.tagger import tag_directory
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cora2",
-        description="프로젝트 소스파일을 카테고리별로 분류합니다.",
+        description="프로젝트 소스파일을 분류·태깅합니다.",
     )
-    parser.add_argument("path", help="스캔할 디렉터리 경로")
-    parser.add_argument(
-        "--json", action="store_true", help="요약을 JSON 형식으로 출력"
-    )
-    parser.add_argument(
-        "--list", action="store_true", help="파일별 분류 결과를 모두 출력"
-    )
-    parser.add_argument(
-        "--group",
-        choices=["category", "language"],
-        help="지정한 기준으로 파일을 묶어 출력",
-    )
-    parser.add_argument(
-        "--version", action="version", version=f"cora2 {__version__}"
-    )
+    parser.add_argument("--version", action="version", version=f"cora2 {__version__}")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # classify (기존 기능)
+    c = sub.add_parser("classify", help="단일 카테고리로 분류(경로/확장자 규칙)")
+    c.add_argument("path", help="스캔할 디렉터리 경로")
+    c.add_argument("--json", action="store_true", help="요약을 JSON으로 출력")
+    c.add_argument("--list", action="store_true", help="파일별 분류 결과 출력")
+    c.add_argument("--group", choices=["category", "language"], help="기준별 묶음 출력")
+
+    # tag (신규: 9개 차원)
+    t = sub.add_parser("tag", help="9개 차원으로 태깅")
+    t.add_argument("path", help="스캔할 디렉터리 경로")
+    t.add_argument("--config", help="설정파일(.toml) 경로 (생략 시 <경로>/cora2.toml 탐색)")
+    t.add_argument("--dimension", help="실행할 차원만 쉼표로 지정 (예: file_type,size)")
+    t.add_argument("--json", action="store_true", help="결과를 JSON으로 출력")
+    t.add_argument("--list", action="store_true", help="파일별 태그 출력")
+
     return parser
 
+
+# ---------- classify 렌더링 (기존) ----------
 
 def _render_summary(summary: dict) -> str:
     lines = [
@@ -82,10 +89,7 @@ def _render_group(entries, key: str) -> str:
     return "\n".join(lines).rstrip()
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-
+def _cmd_classify(args) -> int:
     try:
         result = scan_directory(args.path)
     except (NotADirectoryError, FileNotFoundError) as exc:
@@ -100,8 +104,74 @@ def main(argv: list[str] | None = None) -> int:
         print(_render_group(result.entries, args.group))
     else:
         print(_render_summary(summarize(result)))
-
     return 0
+
+
+# ---------- tag 렌더링 (신규) ----------
+
+def _render_tag_summary(report) -> str:
+    summary = report.summary()
+    lines = [f"루트: {report.root}", f"전체 파일: {len(report.files)}", ""]
+    for dim, bucket in summary.items():
+        lines.append(f"[{dim}]")
+        for tag, count in bucket.items():
+            lines.append(f"  {tag:<18} {count}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def _render_tag_list(report) -> str:
+    lines = []
+    for f in report.files:
+        repo = f.repo or "-"
+        lines.append(f"{f.path}  (repo={repo})")
+        for dim, tags in f.tags.items():
+            lines.append(f"  {dim:<16} {', '.join(tags)}")
+    return "\n".join(lines)
+
+
+def _cmd_tag(args) -> int:
+    try:
+        cfg = find_and_load(args.path, args.config)
+    except FileNotFoundError as exc:
+        print(f"오류: {exc}", file=sys.stderr)
+        return 2
+
+    if args.dimension:
+        from cora2.dimensions import available_dimensions
+
+        valid = set(available_dimensions())
+        wanted = [d.strip() for d in args.dimension.split(",") if d.strip()]
+        unknown = [d for d in wanted if d not in valid]
+        if unknown:
+            print(f"오류: 알 수 없는 차원: {', '.join(unknown)}", file=sys.stderr)
+            return 2
+        cfg.enabled_dimensions = wanted
+
+    try:
+        report = tag_directory(args.path, config=cfg)
+    except (NotADirectoryError, FileNotFoundError) as exc:
+        print(f"오류: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    elif args.list:
+        print(_render_tag_list(report))
+    else:
+        print(_render_tag_summary(report))
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.command == "classify":
+        return _cmd_classify(args)
+    if args.command == "tag":
+        return _cmd_tag(args)
+    parser.error("알 수 없는 명령")
+    return 2
 
 
 if __name__ == "__main__":

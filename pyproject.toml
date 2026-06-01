@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cora2"
-version = "0.1.0"
-description = "프로젝트 소스파일을 카테고리별로 분류하는 도구"
+version = "0.2.0"
+description = "프로젝트 소스파일을 9개 차원으로 태깅·분류하는 도구"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = []
 

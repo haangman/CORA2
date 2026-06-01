@@ -1,0 +1,80 @@
+# CORA2 설정파일 (샘플)
+#
+# 모든 키는 생략 가능하며, 생략 시 코드에 정의된 기본값이 사용된다.
+# 프로젝트는 여러 git repo의 조합일 수 있으므로 [[repo]]로 폴더↔repo/branch를 지정한다.
+
+[scan]
+# 스캔에서 제외할 디렉터리. 비우면 기본값(.git, node_modules, __pycache__ 등) 사용.
+ignore_dirs = []
+
+[dimensions]
+# 실행할 차원. 순서/구성 변경 가능.
+enabled = [
+  "file_type", "purpose", "ownership", "license",
+  "volatility", "recency", "author_pattern", "size", "dummy",
+]
+
+# --- repo 매핑 (여러 개 가능) ---
+[[repo]]
+path = "."           # 스캔 루트 기준 상대경로. "."은 루트 자신.
+name = "cora2"
+# branch 생략 시 git에서 자동 감지
+# remote = "https://github.com/haangman/CORA2"
+
+# 예: 서드파티 repo가 하위 폴더로 포함된 경우
+# [[repo]]
+# path = "third_party/zlib"
+# name = "zlib"
+# branch = "release"
+
+[ownership]
+# 내부 작성자(이메일 도메인 또는 정확 일치)
+internal_authors = ["@samsung.com"]
+# 저작권 헤더에서 내부로 판정할 엔티티명
+internal_entities = ["Samsung", "SAMSUNG"]
+# 이 경로 prefix 아래는 External로 판정
+external_paths = ["third_party/", "external/", "vendor/"]
+
+[license]
+internal_tag = "SAMSUNG"
+# 헤더/LICENSE/README에 매칭할 정규식 → 태그 (위에서부터 우선)
+patterns = [
+  { regex = "SPDX-License-Identifier:\\s*GPL", tag = "GPL" },
+  { regex = "SPDX-License-Identifier:\\s*MIT", tag = "MIT" },
+  { regex = "SPDX-License-Identifier:\\s*Apache", tag = "Apache" },
+  { regex = "GNU GENERAL PUBLIC LICENSE", tag = "GPL" },
+  { regex = "MIT License", tag = "MIT" },
+  { regex = "Apache License", tag = "Apache" },
+]
+
+[volatility]
+window_days = 180
+high_churn_commits = 50
+medium_churn_commits = 10
+low_churn_commits = 1
+high_churn_lines = 2000
+medium_churn_lines = 500
+low_churn_lines = 50
+internal_dominant_ratio = 0.8
+
+[recency]
+hot_days = 30
+active_days = 90
+cooling_days = 180
+stable_days = 365
+
+[author_pattern]
+single_ratio = 0.9
+few_max = 3
+few_ratio = 0.9
+shared_min = 4
+
+[size]
+# LOC(줄 수) 기준. 각 값은 해당 버킷의 상한(이하). 초과는 Massive.
+tiny_max = 50
+small_max = 200
+medium_max = 500
+large_max = 2000
+
+[dummy]
+tag = "dummy"

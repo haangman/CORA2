@@ -4,29 +4,39 @@
 
 ## 프로젝트 개요
 
-**CORA2**는 임의의 프로젝트 디렉터리를 스캔해 소스파일을 **카테고리별로 분류**하는
-Python CLI 도구입니다. 파일 내용을 읽지 않고 경로/파일명/확장자 규칙만으로 분류하여
-빠르고 결정론적으로 동작합니다.
+**CORA2**는 임의의 프로젝트 디렉터리를 스캔해 각 파일을 **9개의 차원으로 태깅**하고,
+간단히는 **단일 카테고리로 분류**하는 Python CLI 도구입니다. 태깅은 파일 경로 + 파일
+내용 + git history를 근거로 하며, 차원의 조합으로 추후 "판별(rule engine)"을 얹을 수
+있게 태그 구조가 설계되어 있습니다. 프로젝트는 여러 git repo의 조합일 수 있습니다.
 
-- 언어/런타임: **Python 3.10+** (개발 환경 3.12)
+- 언어/런타임: **Python 3.11+** (개발 환경 3.12, `tomllib` 사용)
 - 테스트: **pytest**
-- 외부 런타임 의존성: 없음 (표준 라이브러리만 사용)
+- 외부 런타임 의존성: 없음 (표준 라이브러리만 사용, git은 subprocess로 호출)
 
 ## 디렉터리 구조
 
 ```
 CORA2/
 ├── src/cora2/
-│   ├── __init__.py       # 공개 API 재노출, __version__
-│   ├── classifier.py     # 핵심 분류 로직 (규칙·스캔·요약)
-│   ├── cli.py            # argparse 기반 CLI
-│   └── __main__.py       # `python -m cora2` 진입점
-├── tests/
-│   ├── test_classifier.py
-│   └── test_cli.py
+│   ├── __init__.py        # 공개 API 재노출, __version__
+│   ├── classifier.py      # 카테고리 분류(규칙·스캔·요약) — file_type/purpose가 재사용
+│   ├── config.py          # TOML 설정 로드 + 기본값 dataclass
+│   ├── repos.py           # 폴더→repo/branch 매핑(longest-prefix), branch 자동감지
+│   ├── gitinfo.py         # repo별 git log --numstat 1패스 파싱 → 파일별 통계
+│   ├── context.py         # FileContext: 경로/내용(lazy)/LOC/git/repo/now
+│   ├── models.py          # FileTags, TagReport (JSON 직렬화/요약)
+│   ├── tagger.py          # 오케스트레이션: scan→context→차원→TagReport
+│   ├── dimensions/
+│   │   ├── __init__.py    # 레지스트리(build_dimensions/available_dimensions)
+│   │   ├── base.py        # Dimension 인터페이스: name, tag(ctx)->list[str]
+│   │   └── *.py           # 9개 차원 (아래 표)
+│   ├── cli.py             # argparse 서브커맨드: classify / tag
+│   └── __main__.py        # `python -m cora2` 진입점
+├── tests/                 # test_classifier/config/repos/gitinfo/dimensions/tagger/cli
 ├── .claude/
-│   ├── settings.json     # 자동화 훅 설정
-│   └── hooks/            # 훅 스크립트 (run_tests.py, auto_push.py)
+│   ├── settings.json      # 자동화 훅 설정
+│   └── hooks/             # run_tests.py, auto_push.py
+├── cora2.toml             # 샘플 설정 (모든 키 생략 가능, 생략 시 기본값)
 ├── pyproject.toml
 ├── README.md
 └── CLAUDE.md
@@ -34,16 +44,38 @@ CORA2/
 
 ## 핵심 개념
 
-- `Category` (Enum): `source`, `test`, `config`, `documentation`, `build`, `data`, `asset`, `other`
-- `classify_file(path)`: 단일 파일을 카테고리로 분류. **규칙 우선순위는
-  테스트 > 문서 > 빌드 > 설정 > 데이터 > 에셋 > 소스 > 기타.** 테스트가 소스보다
-  우선이라 `tests/test_main.py`는 `.py`여도 `test`로 분류된다.
-- `detect_language(path)`: 확장자로 언어 추정 (`LANGUAGE_BY_EXT`).
-- `scan_directory(root)`: 재귀 순회. `DEFAULT_IGNORE_DIRS`(`.git`, `node_modules` 등)는 가지치기.
-- `summarize(result)`: 카테고리별/언어별 집계 dict 반환.
+### 카테고리 분류 (classifier.py — 기존)
 
-분류 규칙을 바꿀 때는 `classifier.py` 상단의 매핑 테이블
-(`LANGUAGE_BY_EXT`, `*_EXTS`, `*_NAMES`, `TEST_DIR_NAMES`, `DEFAULT_IGNORE_DIRS`)을 수정한다.
+- `Category` (Enum): `source`, `test`, `config`, `documentation`, `build`, `data`, `asset`, `other`
+- `classify_file(path)`: 경로만으로 단일 카테고리. **우선순위: 테스트 > 문서 > 빌드 >
+  설정 > 데이터 > 에셋 > 소스 > 기타.** (주의: `CMakeLists.txt`는 `.txt`라 여기선
+  documentation으로 분류됨 — purpose 차원이 이를 별도 보완한다.)
+- `scan_directory(root, ignore_dirs)`, `summarize(result)`.
+
+### 9개 차원 태깅
+
+| # | 차원(name) | 모듈 | 태그(예) | 비고 |
+|---|------------|------|----------|------|
+| 1 | `file_type` | file_type.py | C/C++, Python, Java, asm, Rust, CMake, Docs, Config, Shell | 확장자+파일명+shebang, 단일 |
+| 2 | `purpose` | purpose.py | Develop, Build, Test, Infra, Tool, Core, Library, Config, Variant | **다중**, 경로 토큰+Category |
+| 3 | `ownership` | ownership.py | Internal, External, Unknown | 경로>헤더>git author |
+| 4 | `license` | license.py | GPL, MIT, Apache, SAMSUNG, 3rd party, unknown | 헤더>repo LICENSE>외부경로 |
+| 5 | `volatility` | volatility.py | High/Medium/Low/No-Churn + Only Internal/Internal-Dominant/Mixed/External-Dominant/Only External | **다중**, 윈도우 커밋·라인 + 내외부비율 |
+| 6 | `recency` | recency.py | Hot, Active, Cooling, Stable, Dormant | last commit(없으면 mtime) vs now |
+| 7 | `author_pattern` | author_pattern.py | Single-Author, Few-Author, Shared | author 커밋 분포 |
+| 8 | `size` | size.py | Tiny, Small, Medium, Large, Massive | LOC 기준 |
+| 9 | `dummy` | dummy.py | dummy | 차원 추가 템플릿 |
+
+- 모든 임계치/기준값은 `config.py`의 dataclass 기본값에 있으며 `cora2.toml`로 덮어쓴다.
+- **git이 없거나 미커밋 파일**은 git 의존 차원(3 일부/5/6/7)이 Unknown/No-Churn/unknown으로 degrade.
+- `tag_directory(root, config, now)`가 진입점. `now`를 주입하면 recency/volatility가 결정론적.
+
+### 새 차원 추가 방법
+
+1. `dimensions/<name>.py`에 `Dimension` 상속 클래스 작성(`name`, `tag(ctx)->list[str]`).
+2. `dimensions/__init__.py`의 `_registry()`에 한 줄 등록.
+3. 필요한 설정값은 `config.py`에 dataclass 추가 + `_apply`에서 병합, `cora2.toml`에 키 추가.
+4. `tests/test_dimensions.py`에 경계값 테스트 추가.
 
 ## 개발 워크플로 (반드시 준수)
 
@@ -51,8 +83,10 @@ CORA2/
    `.claude/hooks/run_tests.py`가 PostToolUse 훅으로 파일 편집 후 자동 실행되며,
    실패 시 결과가 피드백된다.
 2. **새 동작을 추가하거나 변경하면 그에 맞는 테스트를 생성/갱신한다.**
-   - 새 카테고리/규칙 → `tests/test_classifier.py`에 케이스 추가
-   - 새 CLI 옵션/출력 → `tests/test_cli.py`에 케이스 추가
+   - 새 카테고리/규칙 → `tests/test_classifier.py`
+   - 새 차원/판정 규칙 → `tests/test_dimensions.py` (경계값 포함)
+   - 설정 키 변경 → `tests/test_config.py`
+   - 새 CLI 옵션/출력 → `tests/test_cli.py`
 3. **작업이 끝나면 자동으로 GitHub에 푸시된다.** `.claude/hooks/auto_push.py`가
    Stop 훅으로 변경사항을 커밋·푸시한다(변경 없으면 무동작, origin 없으면 무동작).
 4. 이 `CLAUDE.md`는 구조나 규칙이 바뀌면 **함께 갱신**한다.
@@ -67,7 +101,11 @@ python -m pytest -q tests/test_classifier.py
 ### CLI 실행
 
 ```powershell
-$env:PYTHONPATH = "src"; python -m cora2 <경로> [--json|--list|--group category|language]
+$env:PYTHONPATH = "src"
+# 9개 차원 태깅
+python -m cora2 tag <경로> [--config FILE] [--dimension file_type,size] [--json|--list]
+# 단일 카테고리 분류(기존)
+python -m cora2 classify <경로> [--json|--list|--group category|language]
 ```
 
 ## 자동화 훅 (.claude/settings.json)

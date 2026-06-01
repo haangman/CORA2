@@ -1,61 +1,105 @@
 # CORA2
 
-프로젝트의 소스파일을 **카테고리별로 분류**하는 CLI 도구입니다. 디렉터리를
-재귀적으로 스캔해 각 파일을 카테고리(소스/테스트/설정/문서/빌드/데이터/에셋/기타)와
-프로그래밍 언어로 분류하고 요약 통계를 제공합니다.
+프로젝트의 소스파일을 **9개 차원으로 태깅**하고, 간단히는 **단일 카테고리로 분류**하는
+CLI 도구입니다. 태깅은 **파일 경로 + 파일 내용 + git history**를 근거로 하며, 차원의
+조합으로 파일을 판별하는 데 활용할 수 있습니다. 프로젝트는 여러 git repo의 조합일 수
+있고, 설정파일에서 폴더↔repo/branch를 지정합니다.
 
 ## 설치 / 실행
 
-별도 의존성 없이 표준 라이브러리만 사용합니다. (테스트는 `pytest` 필요)
+별도 런타임 의존성 없이 표준 라이브러리만 사용합니다(Python **3.11+**, git은 선택).
+테스트는 `pytest`가 필요합니다.
 
 ```powershell
 # 소스를 경로에 추가해 실행
-$env:PYTHONPATH = "src"; python -m cora2 <경로>
+$env:PYTHONPATH = "src"; python -m cora2 tag <경로>
 
 # 또는 editable 설치 후 cora2 명령 사용
 pip install -e .
-cora2 <경로>
+cora2 tag <경로>
 ```
 
 ## 사용법
 
 ```text
-python -m cora2 <경로>                  # 카테고리/언어 요약 출력
-python -m cora2 <경로> --json           # JSON 요약
-python -m cora2 <경로> --list           # 파일별 분류 결과
-python -m cora2 <경로> --group category # 카테고리별 묶음
-python -m cora2 <경로> --group language # 언어별 묶음
+# 9개 차원 태깅
+python -m cora2 tag <경로>                       # 차원별 태그 분포 요약
+python -m cora2 tag <경로> --json                # 파일별 태그 JSON
+python -m cora2 tag <경로> --list                # 파일별 태그 목록
+python -m cora2 tag <경로> --config cora2.toml   # 설정파일 지정
+python -m cora2 tag <경로> --dimension file_type,size   # 일부 차원만
+
+# 단일 카테고리 분류 (가벼운 분류)
+python -m cora2 classify <경로> [--json|--list|--group category|language]
 ```
 
-### 예시 출력
+### 예시 출력 (`tag`)
 
 ```text
 루트: .
-전체 파일: 8
+전체 파일: 36
 
-[카테고리별]
-  source         4
-  config         2
-  test           2
+[file_type]
+  Python             30
+  Config             4
+  Docs               2
 
-[언어별]
-  Python         6
+[purpose]
+  Develop            23
+  Test               7
+  Config             3
+...
 ```
 
-## 분류 규칙
+## 9개 차원
 
-우선순위: **테스트 > 문서 > 빌드 > 설정 > 데이터 > 에셋 > 소스 > 기타**
+| # | 차원 | 설명 | 태그(예) |
+|---|------|------|----------|
+| 1 | File Type | 확장자/내용 기반 언어·문서 유형 | C/C++, Python, Java, asm, Rust, CMake, Docs, Config, Shell |
+| 2 | Purpose | 프로젝트 내 역할(다중 가능) | Develop, Build, Test, Infra, Tool, Core, Library, Config, Variant |
+| 3 | Ownership | 원작자/유지보수 소재 | Internal, External, Unknown |
+| 4 | License | 적용 라이선스 | GPL, MIT, Apache, SAMSUNG, 3rd party, unknown |
+| 5 | Volatility | 변동성(churn + 개발자 구성) | High/Medium/Low/No-Churn + Only Internal/Internal-Dominant/Mixed/External-Dominant/Only External |
+| 6 | Recency | 최종 수정 경과 | Hot, Active, Cooling, Stable, Dormant |
+| 7 | Author Pattern | 작성자 분포 | Single-Author, Few-Author, Shared |
+| 8 | Size | 크기(LOC) | Tiny, Small, Medium, Large, Massive |
+| 9 | Dummy | 더미(차원 추가 템플릿) | dummy |
 
-- **test**: 경로에 `tests`/`spec` 등이 있거나 `test_`/`_test` 접두·접미사, `.test.`/`.spec.` 패턴
-- **documentation**: `.md`, `.rst`, `.adoc`, `.txt`
-- **build**: `Dockerfile`, `Makefile`, `setup.py`, `pom.xml` 등
-- **config**: `.yml`, `.toml`, `.gitignore`, `package.json` 등
-- **data**: `.csv`, `.json`, `.xml`, `.parquet` 등
-- **asset**: 이미지/미디어/폰트
-- **source**: 알려진 언어 확장자
-- **other**: 그 외
+git 정보가 없거나 아직 커밋되지 않은 파일은 git 의존 차원(3 일부/5/6/7)이
+`Unknown`/`No-Churn`/`unknown`으로 자동 degrade 됩니다.
 
-`.git`, `node_modules`, `__pycache__`, `.venv`, `dist`, `build` 등은 스캔에서 제외됩니다.
+## 설정 (cora2.toml)
+
+모든 키는 생략 가능하며, 생략 시 코드에 정의된 기본값이 사용됩니다. 차원별 임계치
+(churn/recency/size 기준 등), ownership/license 규칙, 그리고 **여러 repo 매핑**을 지정합니다.
+
+```toml
+[dimensions]
+enabled = ["file_type", "purpose", "ownership", "license",
+           "volatility", "recency", "author_pattern", "size", "dummy"]
+
+[[repo]]
+path = "."                 # 스캔 루트 기준 상대경로. "."은 루트 자신.
+name = "cora2"
+# branch 생략 시 git에서 자동 감지
+
+[[repo]]
+path = "third_party/zlib"  # 하위 폴더가 별도 repo인 경우
+name = "zlib"
+branch = "release"
+
+[ownership]
+internal_authors = ["@samsung.com"]
+internal_entities = ["Samsung"]
+external_paths = ["third_party/", "external/", "vendor/"]
+
+[recency]
+hot_days = 30
+active_days = 90
+# ...
+```
+
+전체 키는 저장소 루트의 [cora2.toml](./cora2.toml)을 참고하세요.
 
 ## 개발
 
@@ -63,4 +107,4 @@ python -m cora2 <경로> --group language # 언어별 묶음
 python -m pytest        # 전체 테스트
 ```
 
-기여 워크플로와 자동화 규칙은 [CLAUDE.md](./CLAUDE.md)를 참고하세요.
+기여 워크플로와 자동화 규칙, 새 차원 추가 방법은 [CLAUDE.md](./CLAUDE.md)를 참고하세요.
