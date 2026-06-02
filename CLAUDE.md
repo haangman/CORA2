@@ -25,14 +25,22 @@ CORA2/
 │   ├── gitinfo.py         # repo별 git log --numstat 1패스 파싱 → 파일별 통계
 │   ├── context.py         # FileContext: 경로/내용(lazy)/LOC/git/repo/now
 │   ├── models.py          # FileTags, TagReport (JSON 직렬화/요약)
-│   ├── tagger.py          # 오케스트레이션: scan→context→차원→TagReport
+│   ├── tagger.py          # 오케스트레이션: iter_contexts(공유) → tag_directory → TagReport
+│   ├── report.py          # [HTML 리포트] 피처 추출 + 데이터 빌드 + render_html/write_report
+│   ├── colors.py          # 차원→hue, 태그→hex 색상 매핑(리포트 임베드)
+│   ├── report_assets/     # 단일 HTML로 인라인되는 원본 자산
+│   │   ├── report.html    #   레이아웃 + {{CSS}}/{{JS}}/{{DATA}} 플레이스홀더
+│   │   ├── report.css
+│   │   ├── report_logic.js #  순수 재태깅 로직(DOM 비의존, 노드 패리티 테스트 대상)
+│   │   └── report.js      #   UI: 가상화 트리/상세/리사이즈/설정 실시간 연동
 │   ├── dimensions/
 │   │   ├── __init__.py    # 레지스트리(build_dimensions/available_dimensions)
 │   │   ├── base.py        # Dimension 인터페이스: name, tag(ctx)->list[str]
 │   │   └── *.py           # 9개 차원 (아래 표)
-│   ├── cli.py             # argparse 서브커맨드: classify / tag
+│   ├── cli.py             # argparse 서브커맨드: classify / tag / report
 │   └── __main__.py        # `python -m cora2` 진입점
-├── tests/                 # test_classifier/config/repos/gitinfo/dimensions/tagger/cli
+├── tests/                 # classifier/config/repos/gitinfo/dimensions/tagger/cli/colors/report/report_parity
+│   └── parity_runner.cjs  # 노드 패리티 러너(report_logic.js 로드)
 ├── .claude/
 │   ├── settings.json      # 자동화 훅 설정
 │   └── hooks/             # run_tests.py, auto_push.py
@@ -77,6 +85,21 @@ CORA2/
 3. 필요한 설정값은 `config.py`에 dataclass 추가 + `_apply`에서 병합, `cora2.toml`에 키 추가.
 4. `tests/test_dimensions.py`에 경계값 테스트 추가.
 
+### 인터랙티브 HTML 리포트 (report.py + report_assets)
+
+- `cora2 report <경로> [-o out.html]` → **자기완결형 단일 HTML**. 폴더 트리(가상화),
+  파일·폴더 옆 태그 색 dot/개수 배지, 클릭 시 우측 상세, 패널 리사이즈, 설정 슬라이더로
+  **실시간 재분류**.
+- 동작 방식: Python(`build_report_data`)이 **원시 피처**(LOC/경과일/커밋기록/작성자분포/
+  ownership 헤더신호) + **범주형 태그**를 추출해 gzip+base64로 임베드 → 브라우저의
+  `report_logic.js`가 슬라이더 값으로 **JS에서 재버킷**.
+- **실시간 조절 가능**: size·recency·author_pattern·volatility(수치 임계치) + ownership
+  (external_paths/internal_authors). **생성 시 고정**(변경하려면 재생성): file_type·purpose·license.
+- **드리프트 방지**: `report_logic.js`는 Python 차원과 1:1 미러. 바꿀 때는 **양쪽 모두**
+  수정하고 `tests/test_report_parity.py`(노드 패리티)로 검증. 순수 로직은 `report_logic.js`에만
+  두고 `report.js`(UI)와 분리한다.
+- 임베드 데이터 스키마/캡(파일당 커밋 `COMMIT_CAP=500`)은 `report.py` 상단 참고.
+
 ## 개발 워크플로 (반드시 준수)
 
 1. **코드를 수정할 때마다 테스트를 실행한다.** 로컬에서는 `python -m pytest`.
@@ -87,6 +110,8 @@ CORA2/
    - 새 차원/판정 규칙 → `tests/test_dimensions.py` (경계값 포함)
    - 설정 키 변경 → `tests/test_config.py`
    - 새 CLI 옵션/출력 → `tests/test_cli.py`
+   - 리포트 데이터/렌더 → `tests/test_report.py`
+   - **재태깅 로직 변경 시 `report_logic.js`도 함께 수정** → `tests/test_report_parity.py`(노드)
 3. **작업이 끝나면 자동으로 GitHub에 푸시된다.** `.claude/hooks/auto_push.py`가
    Stop 훅으로 변경사항을 커밋·푸시한다(변경 없으면 무동작, origin 없으면 무동작).
 4. 이 `CLAUDE.md`는 구조나 규칙이 바뀌면 **함께 갱신**한다.
@@ -102,6 +127,8 @@ python -m pytest -q tests/test_classifier.py
 
 ```powershell
 $env:PYTHONPATH = "src"
+# 인터랙티브 HTML 리포트
+python -m cora2 report <경로> [-o out.html] [--config FILE] [--no-compress] [--open]
 # 9개 차원 태깅
 python -m cora2 tag <경로> [--config FILE] [--dimension file_type,size] [--json|--list]
 # 단일 카테고리 분류(기존)

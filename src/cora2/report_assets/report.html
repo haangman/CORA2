@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CORA2 Report</title>
+<style>
+{{CSS}}
+</style>
+</head>
+<body>
+<header id="topbar">
+  <div class="title">CORA2 <span class="sub">파일 차원 태깅 리포트</span></div>
+  <div id="rootinfo" class="rootinfo"></div>
+  <div class="topactions">
+    <input id="filter-input" type="search" placeholder="파일명 필터…" autocomplete="off">
+    <button id="reset-btn" title="설정을 기본값으로">기본값</button>
+  </div>
+</header>
+
+<div id="summary"></div>
+
+<main id="layout">
+  <section id="settings-pane" class="pane">
+    <h2>설정 <small>(조절 시 실시간 재분류)</small></h2>
+    <div id="settings-content"></div>
+    <h2>범례</h2>
+    <div id="legend"></div>
+  </section>
+
+  <div class="splitter" data-target="settings-pane"></div>
+
+  <section id="tree-pane" class="pane">
+    <div id="tree-toolbar">
+      <button id="expand-all">모두 펼침</button>
+      <button id="collapse-all">모두 접기</button>
+      <span id="tree-count" class="muted"></span>
+    </div>
+    <div id="tree-viewport">
+      <div id="tree-canvas"><div id="tree-rows"></div></div>
+    </div>
+  </section>
+
+  <div class="splitter" data-target="tree-pane"></div>
+
+  <section id="detail-pane" class="pane">
+    <h2>상세</h2>
+    <div id="detail-content"><p class="muted">파일을 선택하세요.</p></div>
+  </section>
+</main>
+
+<script type="application/json" id="cora2-data" data-enc="{{DATA_ENC}}">
+{{DATA}}
+</script>
+<script>
+{{JS}}
+</script>
+</body>
+</html>

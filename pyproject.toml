@@ -20,6 +20,9 @@ cora2 = "cora2.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+cora2 = ["report_assets/*.html", "report_assets/*.css", "report_assets/*.js"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

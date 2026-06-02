@@ -113,3 +113,31 @@ def test_tag_missing_config_errors(sample_project, capsys):
     err = capsys.readouterr().err
     assert rc == 2
     assert "오류" in err
+
+
+# ---------- report ----------
+
+def test_report_creates_html(sample_project, capsys, tmp_path):
+    out = tmp_path / "r.html"
+    rc = main(["report", str(sample_project), "-o", str(out)])
+    capsys.readouterr()
+    assert rc == 0
+    assert out.is_file()
+    text = out.read_text(encoding="utf-8")
+    assert "<html" in text
+    assert 'id="cora2-data"' in text
+
+
+def test_report_no_compress(sample_project, tmp_path, capsys):
+    out = tmp_path / "r.html"
+    rc = main(["report", str(sample_project), "-o", str(out), "--no-compress"])
+    capsys.readouterr()
+    assert rc == 0
+    assert 'data-enc=""' in out.read_text(encoding="utf-8")
+
+
+def test_report_default_output_path(sample_project, capsys):
+    rc = main(["report", str(sample_project)])
+    capsys.readouterr()
+    assert rc == 0
+    assert (sample_project / "cora2-report.html").is_file()

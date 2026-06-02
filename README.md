@@ -22,7 +22,11 @@ cora2 tag <경로>
 ## 사용법
 
 ```text
-# 9개 차원 태깅
+# 인터랙티브 HTML 리포트 (브라우저에서 탐색)
+python -m cora2 report <경로>                    # <경로>/cora2-report.html 생성
+python -m cora2 report <경로> -o out.html --open # 경로 지정 + 브라우저로 열기
+
+# 9개 차원 태깅 (터미널)
 python -m cora2 tag <경로>                       # 차원별 태그 분포 요약
 python -m cora2 tag <경로> --json                # 파일별 태그 JSON
 python -m cora2 tag <경로> --list                # 파일별 태그 목록
@@ -32,6 +36,19 @@ python -m cora2 tag <경로> --dimension file_type,size   # 일부 차원만
 # 단일 카테고리 분류 (가벼운 분류)
 python -m cora2 classify <경로> [--json|--list|--group category|language]
 ```
+
+## 인터랙티브 HTML 리포트
+
+`cora2 report` 는 의존성 없는 **단일 HTML 파일**을 만듭니다(더블클릭으로 열림).
+
+- 분석한 프로젝트의 **폴더 트리**를 그대로 보여주고, 펼치고/클릭해서 탐색(수만 파일도 가상화로 부드럽게).
+- 파일명 옆에 각 태그를 **그 태그 색의 원**으로, 폴더에는 **색 원 + 개수**로 표시.
+- 파일 클릭 → **우측 상세 패널**(차원별 태그 + LOC/최종수정/커밋/작성자 등 원시 피처).
+- 패널은 **드래그로 크기 조절**.
+- 좌측 **설정 슬라이더**로 임계치를 조절하면 **실시간으로 재분류**되어 트리·요약이 즉시 갱신.
+  - 실시간 조절: `size`, `recency`, `author_pattern`, `volatility`, `ownership`(경로/내부작성자).
+  - 생성 시 고정(변경하려면 재생성): `file_type`, `purpose`, `license`.
+- 기본은 gzip 압축 임베드. `--no-compress` 로 평문 임베드 가능.
 
 ### 예시 출력 (`tag`)
 

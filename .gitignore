@@ -23,3 +23,7 @@ htmlcov/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# 생성된 리포트 / Playwright 산출물
+cora2-report.html
+.playwright-mcp/
