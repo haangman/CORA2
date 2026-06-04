@@ -26,4 +26,6 @@ Thumbs.db
 
 # 생성된 리포트 / Playwright 산출물
 cora2-report.html
+cora2-report.json
+cora2-report.csv
 .playwright-mcp/

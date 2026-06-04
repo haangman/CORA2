@@ -128,6 +128,28 @@ def test_report_creates_html(sample_project, capsys, tmp_path):
     assert 'id="cora2-data"' in text
 
 
+def test_report_creates_all_three_formats(sample_project, capsys, tmp_path):
+    out = tmp_path / "r.html"
+    rc = main(["report", str(sample_project), "-o", str(out)])
+    output = capsys.readouterr().out
+    assert rc == 0
+    assert (tmp_path / "r.html").is_file()
+    assert (tmp_path / "r.json").is_file()
+    assert (tmp_path / "r.csv").is_file()
+    # 생성 경로 3종이 모두 출력됨
+    for kind in ("HTML", "JSON", "CSV"):
+        assert kind in output
+
+
+def test_report_default_outputs_siblings(sample_project, capsys):
+    rc = main(["report", str(sample_project)])
+    capsys.readouterr()
+    assert rc == 0
+    assert (sample_project / "cora2-report.html").is_file()
+    assert (sample_project / "cora2-report.json").is_file()
+    assert (sample_project / "cora2-report.csv").is_file()
+
+
 def test_report_no_compress(sample_project, tmp_path, capsys):
     out = tmp_path / "r.html"
     rc = main(["report", str(sample_project), "-o", str(out), "--no-compress"])

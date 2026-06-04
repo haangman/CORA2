@@ -174,7 +174,7 @@ def _cmd_tag(args) -> int:
 def _cmd_report(args) -> int:
     from pathlib import Path
 
-    from cora2.report import write_report
+    from cora2.report import write_reports
 
     try:
         cfg = find_and_load(args.path, args.config)
@@ -184,18 +184,20 @@ def _cmd_report(args) -> int:
 
     output = args.output or str(Path(args.path) / "cora2-report.html")
     try:
-        out = write_report(
+        outs = write_reports(
             args.path, output, config=cfg, compress=not args.no_compress
         )
     except (NotADirectoryError, FileNotFoundError) as exc:
         print(f"오류: {exc}", file=sys.stderr)
         return 2
 
-    print(f"리포트 생성: {out}")
+    print("리포트 생성:")
+    for kind in ("html", "json", "csv"):
+        print(f"  {kind.upper():<4} {outs[kind]}")
     if args.open_browser:
         import webbrowser
 
-        webbrowser.open(out.resolve().as_uri())
+        webbrowser.open(outs["html"].resolve().as_uri())
     return 0
 
 

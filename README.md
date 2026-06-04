@@ -22,9 +22,9 @@ cora2 tag <경로>
 ## 사용법
 
 ```text
-# 인터랙티브 HTML 리포트 (브라우저에서 탐색)
-python -m cora2 report <경로>                    # <경로>/cora2-report.html 생성
-python -m cora2 report <경로> -o out.html --open # 경로 지정 + 브라우저로 열기
+# 리포트 생성 (HTML + JSON + CSV 항상 함께 생성)
+python -m cora2 report <경로>                    # <경로>/cora2-report.{html,json,csv}
+python -m cora2 report <경로> -o out.html --open # 경로 지정(out.json/out.csv 동반) + 브라우저로 열기
 
 # 9개 차원 태깅 (터미널)
 python -m cora2 tag <경로>                       # 차원별 태그 분포 요약
@@ -37,9 +37,23 @@ python -m cora2 tag <경로> --dimension file_type,size   # 일부 차원만
 python -m cora2 classify <경로> [--json|--list|--group category|language]
 ```
 
-## 인터랙티브 HTML 리포트
+## 리포트 (HTML + JSON + CSV)
 
-`cora2 report` 는 의존성 없는 **단일 HTML 파일**을 만듭니다(더블클릭으로 열림).
+`cora2 report` 는 **세 가지 형식을 같은 stem 으로 함께** 생성합니다
+(`out.html` 지정 시 `out.json`, `out.csv` 동반).
+
+- **HTML** — 아래 인터랙티브 뷰.
+- **JSON** — `{root, generatedAt, dimensions, files:[{path, repo, tags{차원:[…]},
+  features{loc, recency_days, commits, authors}}], summary}`.
+- **CSV** — 컬럼: `path, repo, file_type, purpose, ownership, license, volatility,
+  recency, author_pattern, size, dummy, loc, recency_days, commits, authors`.
+  다중 태그 차원(purpose·volatility 등)은 한 셀에서 `;` 로 구분. Excel 한글 호환을 위해
+  UTF-8 BOM 으로 기록됩니다.
+- JSON/CSV 의 태그는 로드된 설정 기준이며 HTML 초기 상태(슬라이더 조절 전)와 동일합니다.
+
+### 인터랙티브 HTML 뷰
+
+HTML 은 의존성 없는 **단일 파일**입니다(더블클릭으로 열림).
 
 - 분석한 프로젝트의 **폴더 트리**를 그대로 보여주고, 펼치고/클릭해서 탐색(수만 파일도 가상화로 부드럽게).
 - 파일명 옆에 각 태그를 **그 태그 색의 원**으로, 폴더에는 **색 원 + 개수**로 표시.

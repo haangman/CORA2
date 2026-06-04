@@ -9,8 +9,21 @@ from datetime import datetime, timezone
 
 import pytest
 
+import csv
+import io
+import json as _json
+
 from cora2.config import Config, OwnershipConfig
-from cora2.report import build_report_data, render_html, write_report
+from cora2.report import (
+    build_outputs,
+    build_report_data,
+    render_html,
+    to_csv,
+    to_json,
+    write_report,
+    write_reports,
+)
+from cora2.tagger import tag_directory
 
 NOW = datetime(2024, 6, 15, tzinfo=timezone.utc)
 _HAS_GIT = shutil.which("git") is not None
@@ -152,3 +165,89 @@ def test_write_report_creates_file(project, cfg, tmp_path):
     text = out.read_text(encoding="utf-8")
     assert "<html" in text
     assert 'id="cora2-data"' in text
+
+
+# ---------- build_outputs / JSON / CSV ----------
+
+DIMENSIONS = [
+    "file_type", "purpose", "ownership", "license",
+    "volatility", "recency", "author_pattern", "size", "dummy",
+]
+
+
+def test_build_outputs_structure(project, cfg):
+    outs = build_outputs(project, config=cfg, now=NOW)
+    for key in ("root", "generatedAt", "dimensions", "data", "rows", "summary"):
+        assert key in outs
+    assert len(outs["rows"]) == 3
+    for r in outs["rows"]:
+        assert set(r["tags"].keys()) == set(DIMENSIONS)
+        assert set(r["features"].keys()) == {"loc", "recency_days", "commits", "authors"}
+    # data 는 기존 HTML 임베드 구조 유지
+    assert "files" in outs["data"] and "colors" in outs["data"]
+
+
+def test_build_report_data_delegates(project, cfg):
+    # build_report_data 는 build_outputs()["data"] 와 동일 구조
+    data = build_report_data(project, config=cfg, now=NOW)
+    assert data == build_outputs(project, config=cfg, now=NOW)["data"]
+
+
+def test_to_json_tags_and_features(project, cfg):
+    outs = build_outputs(project, config=cfg, now=NOW)
+    obj = _json.loads(to_json(outs))
+    assert obj["dimensions"] == DIMENSIONS
+    assert len(obj["files"]) == 3
+    by_path = {f["path"]: f for f in obj["files"]}
+    main = by_path["src/main.py"]
+    assert main["tags"]["file_type"] == ["Python"]
+    assert "loc" in main["features"] and "commits" in main["features"]
+    # summary 정합: file_type Python 카운트
+    assert obj["summary"]["file_type"].get("Python") == 1
+
+
+def test_json_tags_match_tag_directory(project, cfg):
+    # 내보내기 태그가 tag_directory 결과와 동일해야 한다(일관성)
+    outs = build_outputs(project, config=cfg, now=NOW)
+    report = tag_directory(project, config=cfg, now=NOW)
+    export = {r["path"]: r["tags"] for r in outs["rows"]}
+    expected = {f.path: f.tags for f in report.files}
+    assert export == expected
+
+
+def test_to_csv_header_and_rows(project, cfg):
+    outs = build_outputs(project, config=cfg, now=NOW)
+    text = to_csv(outs)
+    reader = list(csv.reader(io.StringIO(text)))
+    header = reader[0]
+    assert header == ["path", "repo", *DIMENSIONS, "loc", "recency_days", "commits", "authors"]
+    assert len(reader) == 1 + 3  # 헤더 + 3파일
+    rows = {row[0]: row for row in reader[1:]}
+    main = rows["src/main.py"]
+    # file_type 컬럼(인덱스 2) = Python
+    assert main[2] == "Python"
+
+
+@pytest.mark.skipif(not _HAS_GIT, reason="git 미설치")
+def test_to_csv_multivalue_join(project, cfg):
+    outs = build_outputs(project, config=cfg, now=NOW)
+    reader = list(csv.reader(io.StringIO(to_csv(outs))))
+    header = reader[0]
+    vol_idx = header.index("volatility")
+    rows = {row[0]: row for row in reader[1:]}
+    # volatility 는 churn + mix 2개 태그 → '; ' join
+    assert "; " in rows["src/main.py"][vol_idx]
+
+
+def test_write_reports_creates_three_files(project, cfg, tmp_path):
+    out = tmp_path / "report.html"
+    paths = write_reports(project, out, config=cfg, now=NOW)
+    assert paths["html"].is_file()
+    assert paths["json"].is_file()
+    assert paths["csv"].is_file()
+    assert paths["json"].suffix == ".json"
+    assert paths["csv"].suffix == ".csv"
+    # CSV 는 UTF-8 BOM 으로 기록
+    assert paths["csv"].read_bytes().startswith(b"\xef\xbb\xbf")
+    # JSON 파싱 가능
+    _json.loads(paths["json"].read_text(encoding="utf-8"))

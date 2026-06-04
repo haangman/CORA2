@@ -26,7 +26,7 @@ CORA2/
 │   ├── context.py         # FileContext: 경로/내용(lazy)/LOC/git/repo/now
 │   ├── models.py          # FileTags, TagReport (JSON 직렬화/요약)
 │   ├── tagger.py          # 오케스트레이션: iter_contexts(공유) → tag_directory → TagReport
-│   ├── report.py          # [HTML 리포트] 피처 추출 + 데이터 빌드 + render_html/write_report
+│   ├── report.py          # [리포트] build_outputs(1회 순회) → HTML/JSON/CSV(render_html/to_json/to_csv/write_reports)
 │   ├── colors.py          # 차원→hue, 태그→hex 색상 매핑(리포트 임베드)
 │   ├── report_assets/     # 단일 HTML로 인라인되는 원본 자산
 │   │   ├── report.html    #   레이아웃 + {{CSS}}/{{JS}}/{{DATA}} 플레이스홀더
@@ -85,11 +85,19 @@ CORA2/
 3. 필요한 설정값은 `config.py`에 dataclass 추가 + `_apply`에서 병합, `cora2.toml`에 키 추가.
 4. `tests/test_dimensions.py`에 경계값 테스트 추가.
 
-### 인터랙티브 HTML 리포트 (report.py + report_assets)
+### 리포트 (report.py + report_assets)
 
-- `cora2 report <경로> [-o out.html]` → **자기완결형 단일 HTML**. 폴더 트리(가상화),
-  파일·폴더 옆 태그 색 dot/개수 배지, 클릭 시 우측 상세, 패널 리사이즈, 설정 슬라이더로
-  **실시간 재분류**.
+- `cora2 report <경로> [-o out.html]` → **HTML + JSON + CSV 를 같은 stem 으로 항상 생성**
+  (`write_reports`). 
+  - **단일 진입 `build_outputs(root, cfg, now)`**: `iter_contexts` **1회 순회**로 9차원 최종
+    태그 + 피처를 추출해 `data`(HTML 임베드) / `rows`(JSON·CSV) / `summary` 를 함께 반환
+    (repo 당 `git log` 중복 호출 방지). `build_report_data` 는 `build_outputs(...)["data"]` 위임.
+  - **JSON**: `to_json` — 파일별 9차원 태그 + features(loc/recency_days/commits/authors) + summary.
+  - **CSV**: `to_csv` — `path,repo,<9차원>,loc,recency_days,commits,authors`. 다중값 차원은
+    `"; "` join, UTF-8 BOM(`utf-8-sig`)으로 기록.
+  - 리포트는 `enabled_dimensions` 와 무관하게 항상 **9차원 전부**(`_all_dimensions`).
+- **HTML**은 **자기완결형 단일 파일**: 폴더 트리(가상화), 파일·폴더 옆 태그 색 dot/개수 배지,
+  클릭 시 우측 상세, 패널 리사이즈, 설정 슬라이더로 **실시간 재분류**.
 - 동작 방식: Python(`build_report_data`)이 **원시 피처**(LOC/경과일/커밋기록/작성자분포/
   ownership 헤더신호) + **범주형 태그**를 추출해 gzip+base64로 임베드 → 브라우저의
   `report_logic.js`가 슬라이더 값으로 **JS에서 재버킷**.
